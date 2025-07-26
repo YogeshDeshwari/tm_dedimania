@@ -1,0 +1,14 @@
+[Unit]
+Description=TrackMania Statistics Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/trackmania-stats
+Environment=PATH=/usr/bin:/usr/local/bin
+ExecStart=/usr/local/bin/streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+Restart=always
+
+[Install]
+WantedBy=multi-user.target 

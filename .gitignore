@@ -1,0 +1,41 @@
+# Database journal files (temporary)
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Keep the main database file
+# dedimania_history_master.db - INCLUDED IN REPO
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+.env
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Screenshots/images (keep the ones you want)
+*.png
+*.jpg
+*.jpeg
+!summaries/*.png 

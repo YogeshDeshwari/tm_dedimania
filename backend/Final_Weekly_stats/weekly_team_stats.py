@@ -211,8 +211,8 @@ class WeeklyStatsGenerator:
                     if login not in player_best or record['rank'] < player_best[login]['rank']:
                         player_best[login] = record
                 
-                # Compare all player pairs (exclude yogeshdeshwari from rivalries)
-                players = [login for login in player_best.keys() if login != 'yogeshdeshwari']
+                # Compare all player pairs (including yogeshdeshwari back in rivalries)
+                players = list(player_best.keys())
                 for i in range(len(players)):
                     for j in range(i + 1, len(players)):
                         p1_login = players[i]
@@ -638,7 +638,7 @@ class WeeklyStatsGenerator:
         server_stats = self.analyze_server_stats(raw_records)
         if 'minilol_champion' in server_stats:
             minilol = server_stats['minilol_champion']
-            write_line(f"🏆 **MiniLol Champion:** {minilol['player']} ({minilol['unique_tracks']} unique minilol tracks)")
+            write_line(f"🏆 **MiniLol Champion:** {minilol['player']} ({minilol['unique_tracks']} minilol tracks)")
         
         write_line()
         
@@ -721,9 +721,17 @@ class WeeklyStatsGenerator:
                 if not (start_date <= record_date <= end_date):
                     continue
                 
-                # Night Owl: 0:00 to 6:00 EU time
-                if 0 <= record_datetime.hour <= 6:
-                    time_stats['night_owl'][login] += 1
+                # Night Owl: Different time windows for different time zones
+                # EU players: 0:00 to 6:00 EU time
+                # knotisaac/travulsa (Canada): 4:00 to 12:00 EU time (equivalent to 22:00-06:00 in Eastern Canada)
+                if login == 'knotisaac':
+                    # knotisaac (travulsa) is from Canada - count 4:00-12:00 EU time as his "night owl" hours (night time in Canada)
+                    if 4 <= record_datetime.hour <= 12:
+                        time_stats['night_owl'][login] += 1
+                else:
+                    # EU players: 0:00 to 6:00 EU time
+                    if 0 <= record_datetime.hour <= 6:
+                        time_stats['night_owl'][login] += 1
                 
                 # Weekend Warrior: Saturday (5) and Sunday (6)
                 if record_datetime.weekday() in [5, 6]:

@@ -16,6 +16,7 @@ import textwrap
 import io
 import numpy as np
 import csv
+import argparse
 
 # Set matplotlib style and font
 plt.style.use('seaborn-v0_8-whitegrid')
@@ -34,7 +35,8 @@ plt.rcParams.update({
 player_logins = ['yrdk',
                  'niyck',
                  'youngblizzard',
-                 'pointiff', 
+                 'pointiff',
+                 '2nd',
                  'yogeshdeshwari', 
                  'bananaapple', 
                  'xxgammelhdxx', 
@@ -67,19 +69,30 @@ import os
 script_dir = os.path.dirname(os.path.abspath(__file__))
 DATABASE_PATH = os.path.abspath(os.path.join(script_dir, '..', '..', 'dedimania_history_master.db'))
 
+# Global variables for custom date range
+CUSTOM_START_DATE = None
+CUSTOM_END_DATE = None
+
 def get_weekly_date_range():
-    """Calculate the most recent Thursday to current day date range"""
+    """Calculate the most recent Sunday to current day date range, or use custom dates if provided"""
+    global CUSTOM_START_DATE, CUSTOM_END_DATE
+    
+    # Use custom dates if provided
+    if CUSTOM_START_DATE and CUSTOM_END_DATE:
+        return CUSTOM_START_DATE, CUSTOM_END_DATE
+    
+    # Default behavior: calculate current week
     today = datetime.now()
     
-    # Find the most recent Thursday (but if today is Thursday, go back to previous Thursday)
-    # Thursday is weekday 3 (Monday=0, Sunday=6)
-    if today.weekday() == 3:
-        # Today is Thursday, go back 7 days to get the previous Thursday
+    # Find the most recent Sunday (but if today is Sunday, go back to previous Sunday)
+    # Sunday is weekday 6 (Monday=0, Sunday=6)
+    if today.weekday() == 6:
+        # Today is Sunday, go back 7 days to get the previous Sunday
         start_date = today - timedelta(days=7)
     else:
-        # Go back to the most recent Thursday
-        days_since_thursday = (today.weekday() - 3) % 7
-        start_date = today - timedelta(days=days_since_thursday)
+        # Go back to the most recent Sunday
+        days_since_sunday = (today.weekday() + 1) % 7  # +1 because Sunday is day 6, but we want 0-based from Sunday
+        start_date = today - timedelta(days=days_since_sunday)
     
     # End date is always today
     end_date = today
@@ -87,7 +100,7 @@ def get_weekly_date_range():
     return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
 
 def get_previous_week_date_range():
-    """Calculate the previous Thursday to Wednesday date range"""
+    """Calculate the previous Sunday to Saturday date range"""
     current_start, current_end = get_weekly_date_range()
     
     # Convert to datetime objects
@@ -95,9 +108,32 @@ def get_previous_week_date_range():
     
     # Previous week is 7 days before current week's start
     prev_start_dt = current_start_dt - timedelta(days=7)
-    prev_end_dt = current_start_dt - timedelta(days=1)  # Wednesday before current Thursday
+    prev_end_dt = current_start_dt - timedelta(days=1)  # Saturday before current Sunday
     
     return prev_start_dt.strftime('%Y-%m-%d'), prev_end_dt.strftime('%Y-%m-%d')
+
+def get_specific_past_week_range(weeks_back=1):
+    """Calculate a specific past week range (weeks_back=1 for last week, weeks_back=2 for week before last, etc.)"""
+    today = datetime.now()
+    
+    # Find the most recent Sunday
+    if today.weekday() == 6:
+        # Today is Sunday, this is week 0
+        most_recent_sunday = today
+    else:
+        # Go back to the most recent Sunday
+        days_since_sunday = (today.weekday() + 1) % 7
+        most_recent_sunday = today - timedelta(days=days_since_sunday)
+    
+    # Go back the specified number of weeks
+    target_week_start = most_recent_sunday - timedelta(days=7 * weeks_back)
+    target_week_end = target_week_start + timedelta(days=6)  # Saturday of that week
+    
+    return target_week_start.strftime('%Y-%m-%d'), target_week_end.strftime('%Y-%m-%d')
+
+def get_custom_week_range(start_date_str, end_date_str):
+    """Use a completely custom date range"""
+    return start_date_str, end_date_str
 
 def get_player_records_from_db(login, date_range_func=get_weekly_date_range):
     """Get player records from database for the specified date range"""
@@ -106,6 +142,10 @@ def get_player_records_from_db(login, date_range_func=get_weekly_date_range):
     
     # Get date range
     start_date, end_date = date_range_func()
+    
+    # Ensure end_date includes the full day (23:59:59)
+    if len(end_date) == 10:  # Format: YYYY-MM-DD
+        end_date = end_date + " 23:59:59"
     
     cursor.execute("""
         SELECT player_login, NickName, Challenge, Record, Rank, RecordDate, Envir, Mode
@@ -277,12 +317,78 @@ def add_rounded_corners(im, radius=24, border=6, border_color=(0, 255, 255), sha
     final_img.paste(rounded, (border, border), rounded)
     return final_img
 
+def parse_arguments():
+    """Parse command line arguments for custom date ranges"""
+    parser = argparse.ArgumentParser(
+        description='Generate Gaming Leaderboard with optional custom date range',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python gaming_leaderboard.py                                    # Current week (Sunday to today)
+  python gaming_leaderboard.py --start 2025-08-03 --end 2025-08-16  # Custom date range
+  python gaming_leaderboard.py --weeks-back 1                     # Last complete week
+  python gaming_leaderboard.py --weeks-back 2                     # 2 weeks ago
+        """
+    )
+    
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--start', '--start-date', 
+                      help='Start date (YYYY-MM-DD format)')
+    group.add_argument('--weeks-back', type=int,
+                      help='Generate for N weeks back (1=last week, 2=week before last, etc.)')
+    
+    parser.add_argument('--end', '--end-date',
+                       help='End date (YYYY-MM-DD format, required if --start is used)')
+    
+    args = parser.parse_args()
+    
+    # Validate arguments
+    if args.start and not args.end:
+        parser.error("--end is required when --start is specified")
+    
+    if args.end and not args.start:
+        parser.error("--start is required when --end is specified")
+    
+    return args
+
+def calculate_weeks_back_dates(weeks_back):
+    """Calculate date range for N weeks back"""
+    today = datetime.now()
+    
+    # Find the most recent Sunday
+    if today.weekday() == 6:
+        most_recent_sunday = today
+    else:
+        days_since_sunday = (today.weekday() + 1) % 7
+        most_recent_sunday = today - timedelta(days=days_since_sunday)
+    
+    # Go back the specified number of weeks
+    target_week_start = most_recent_sunday - timedelta(days=7 * weeks_back)
+    target_week_end = target_week_start + timedelta(days=6)  # Saturday of that week
+    
+    return target_week_start.strftime('%Y-%m-%d'), target_week_end.strftime('%Y-%m-%d')
+
+# Parse command line arguments at startup
+args = parse_arguments()
+
+# Set custom dates if provided
+if args.start and args.end:
+    CUSTOM_START_DATE = args.start
+    CUSTOM_END_DATE = args.end
+    print(f"📅 Using custom date range: {args.start} to {args.end}")
+elif args.weeks_back:
+    CUSTOM_START_DATE, CUSTOM_END_DATE = calculate_weeks_back_dates(args.weeks_back)
+    print(f"📅 Using {args.weeks_back} week(s) back: {CUSTOM_START_DATE} to {CUSTOM_END_DATE}")
+
 # Data collection (same as original)
 print("Collecting data for highlights and points table...")
 
 # Print the date range being used
 start_date, end_date = get_weekly_date_range()
-print(f"📅 Using most recent Thursday to current day range: {start_date} to {end_date}")
+print(f"📅 Using date range: {start_date} to {end_date}")
+
+# Initialize data collection for highlights
+all_player_data = {}
 
 for login in player_logins:
     print(f"Fetching data from database for {login}...")
@@ -858,4 +964,6 @@ def print_detailed_player_analysis(login, include_servers=True):
         server_count = Counter(servers)
         print(f"\n🏢 SERVER DISTRIBUTION:")
         for server, count in server_count.most_common():
-            print(f"   {server}: {count} records ({count/len(records)*100:.1f}%)") 
+            print(f"   {server}: {count} records ({count/len(records)*100:.1f}%)")
+
+ 

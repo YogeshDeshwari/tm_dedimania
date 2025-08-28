@@ -29,7 +29,7 @@ class TotalRecordsUpdater:
         })
     
     def get_challenges_with_uuids(self):
-        """Get all challenges that have UUIDs from the database"""
+        """Get all challenges that have UUIDs from the database, excluding those with total_records >= 30"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -38,6 +38,7 @@ class TotalRecordsUpdater:
             FROM challenge_info 
             WHERE challenge_uuid IS NOT NULL 
             AND challenge_uuid != ''
+            AND (total_records IS NULL OR total_records < 30)
             ORDER BY challenge_name
         """)
         
@@ -120,9 +121,9 @@ class TotalRecordsUpdater:
         if dry_run:
             print("DRY RUN MODE - No changes will be made to database")
         
-        # Get all challenges with UUIDs
+        # Get all challenges with UUIDs (excluding those with total_records >= 30)
         challenges = self.get_challenges_with_uuids()
-        print(f"Found {len(challenges)} challenges with UUIDs")
+        print(f"Found {len(challenges)} challenges with UUIDs that need updating (excluding those with >=30 records)")
         
         if limit:
             challenges = challenges[:limit]

@@ -15,31 +15,59 @@ import time
 
 # Configuration
 PLAYER_LOGINS = [
-    'yrdk', 'niyck', 'youngblizzard', 'pointiff', 'yogeshdeshwari', 'bananaapple',
+    'yrdk', 'niyck', 'youngblizzard', 'pointiff', '2nd' 'yogeshdeshwari', 'bananaapple',
     'xxgammelhdxx', 'tzigitzellas', 'fichekk', 'mglulguf', 'knotisaac', 'hoodintm',
     'heisenberg01', 'paxinho', 'thewelkuuus', 'riza_123', 'dejong2', 'brunobranco32',
     'cholub', 'certifiednebula', 'luka1234car', 'sylwson2', 'erreerrooo', 'declineee', 
     'bojo_interia.eu', 'noam3105', 'stwko', 'mitrug', 'bobjegraditelj'
 ]
 
+# Global variables for custom date range
+CUSTOM_START_DATE = None
+CUSTOM_END_DATE = None
+
 def get_weekly_date_range():
-    """Calculate the most recent Thursday to current day date range"""
+    """Calculate the most recent Sunday to current day date range, or use custom dates if provided"""
+    global CUSTOM_START_DATE, CUSTOM_END_DATE
+    
+    # Use custom dates if provided
+    if CUSTOM_START_DATE and CUSTOM_END_DATE:
+        return CUSTOM_START_DATE, CUSTOM_END_DATE
+    
+    # Default behavior: calculate current week
     today = datetime.now()
     
-    # Find the most recent Thursday (but if today is Thursday, go back to previous Thursday)
-    # Thursday is weekday 3 (Monday=0, Sunday=6)
-    if today.weekday() == 3:
-        # Today is Thursday, go back 7 days to get the previous Thursday
+    # Find the most recent Sunday (but if today is Sunday, go back to previous Sunday)
+    # Sunday is weekday 6 (Monday=0, Sunday=6)
+    if today.weekday() == 6:
+        # Today is Sunday, go back 7 days to get the previous Sunday
         start_date = today - timedelta(days=7)
     else:
-        # Go back to the most recent Thursday
-        days_since_thursday = (today.weekday() - 3) % 7
-        start_date = today - timedelta(days=days_since_thursday)
+        # Go back to the most recent Sunday
+        days_since_sunday = (today.weekday() + 1) % 7  # +1 because Sunday is day 6, but we want 0-based from Sunday
+        start_date = today - timedelta(days=days_since_sunday)
     
     # End date is always today
     end_date = today
     
     return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+
+def calculate_weeks_back_dates(weeks_back):
+    """Calculate date range for N weeks back"""
+    today = datetime.now()
+    
+    # Find the most recent Sunday
+    if today.weekday() == 6:
+        most_recent_sunday = today
+    else:
+        days_since_sunday = (today.weekday() + 1) % 7
+        most_recent_sunday = today - timedelta(days=days_since_sunday)
+    
+    # Go back the specified number of weeks
+    target_week_start = most_recent_sunday - timedelta(days=7 * weeks_back)
+    target_week_end = target_week_start + timedelta(days=6)  # Saturday of that week
+    
+    return target_week_start.strftime('%Y-%m-%d'), target_week_end.strftime('%Y-%m-%d')
 
 class WeeklyStatsGenerator:
     def __init__(self, db_path=None):
@@ -68,11 +96,11 @@ class WeeklyStatsGenerator:
             return float('inf')
     
     def get_latest_data(self):
-        """Get latest data from database for the most recent Thursday to current day range"""
+        """Get latest data from database for the most recent Sunday to current day range"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Get most recent Thursday to current day date range
+        # Get most recent Sunday to current day date range
         start_date, end_date = get_weekly_date_range()
         
         cursor.execute("""
@@ -231,8 +259,9 @@ class WeeklyStatsGenerator:
                             rivalry_data[rivalry_key][track][p2_login] += 1
                         # If ranks are equal, it's a tie (no points awarded)
         
-        # Calculate overall rivalries
+        # Calculate overall rivalries - first pass with standard threshold
         rivalries = []
+        potential_2_track_rivalries = []
         
         for rivalry_key, track_data in rivalry_data.items():
             # Calculate total wins per login
@@ -241,49 +270,63 @@ class WeeklyStatsGenerator:
             total_wins_login2 = sum(track_wins.get(login2, 0) for track_wins in track_data.values())
             shared_tracks = len(track_data)
             
-            if shared_tracks >= 3:  # Significant rivalry
-                # Get current nicknames
-                nick1 = login_to_nick.get(login1, login1)
-                nick2 = login_to_nick.get(login2, login2)
-                
-                # Determine leader and order names (leader first)
-                if total_wins_login1 > total_wins_login2:
-                    leader_name = nick1
-                    loser_name = nick2
-                    leader = leader_name
+            # Get current nicknames
+            nick1 = login_to_nick.get(login1, login1)
+            nick2 = login_to_nick.get(login2, login2)
+            
+            # Determine leader and order names (leader first)
+            if total_wins_login1 > total_wins_login2:
+                leader_name = nick1
+                loser_name = nick2
+                leader = leader_name
+                player1_wins = total_wins_login1
+                player2_wins = total_wins_login2
+            elif total_wins_login2 > total_wins_login1:
+                leader_name = nick2
+                loser_name = nick1
+                leader = leader_name
+                player1_wins = total_wins_login2
+                player2_wins = total_wins_login1
+            else:
+                # For ties, use alphabetical order
+                leader_name = nick1 if nick1 < nick2 else nick2
+                loser_name = nick2 if nick1 < nick2 else nick1
+                leader = "Tied"
+                if nick1 < nick2:
                     player1_wins = total_wins_login1
                     player2_wins = total_wins_login2
-                elif total_wins_login2 > total_wins_login1:
-                    leader_name = nick2
-                    loser_name = nick1
-                    leader = leader_name
+                else:
                     player1_wins = total_wins_login2
                     player2_wins = total_wins_login1
-                else:
-                    # For ties, use alphabetical order
-                    leader_name = nick1 if nick1 < nick2 else nick2
-                    loser_name = nick2 if nick1 < nick2 else nick1
-                    leader = "Tied"
-                    if nick1 < nick2:
-                        player1_wins = total_wins_login1
-                        player2_wins = total_wins_login2
-                    else:
-                        player1_wins = total_wins_login2
-                        player2_wins = total_wins_login1
-                
-                # Score always matches player order: Player1 vs Player2 (Player1_wins-Player2_wins)
-                score = f"{player1_wins}-{player2_wins}"
-                
-                rivalries.append({
-                    'player1': leader_name,  # Leader always first
-                    'player2': loser_name,   # Loser always second
-                    'shared_tracks': shared_tracks,
-                    'p1_wins': player1_wins,  # Wins for player1 (as displayed)
-                    'p2_wins': player2_wins,  # Wins for player2 (as displayed)
-                    'leader': leader,
-                    'score': score,
-                    'tracks': list(track_data.keys())
-                })
+            
+            # Score always matches player order: Player1 vs Player2 (Player1_wins-Player2_wins)
+            score = f"{player1_wins}-{player2_wins}"
+            
+            rivalry_data_obj = {
+                'player1': leader_name,  # Leader always first
+                'player2': loser_name,   # Loser always second
+                'shared_tracks': shared_tracks,
+                'p1_wins': player1_wins,  # Wins for player1 (as displayed)
+                'p2_wins': player2_wins,  # Wins for player2 (as displayed)
+                'leader': leader,
+                'score': score,
+                'tracks': list(track_data.keys())
+            }
+            
+            if shared_tracks >= 3:  # Standard rivalry threshold
+                rivalries.append(rivalry_data_obj)
+            elif shared_tracks == 2:  # Store potential 2-track rivalries
+                potential_2_track_rivalries.append(rivalry_data_obj)
+        
+        # Always include 2-track rivalries to ensure we have at least 15 total rivalries
+        if potential_2_track_rivalries:
+            print(f"🔍 Including 2-track rivalries to reach target ({len(rivalries)} main rivalries)")
+            # Sort 2-track rivalries by total battles (wins) to get the most active ones
+            potential_2_track_rivalries.sort(key=lambda x: x['p1_wins'] + x['p2_wins'], reverse=True)
+            # Add 2-track rivalries to reach at least 15 total rivalries
+            target_rivalries = 15
+            needed = max(0, min(target_rivalries - len(rivalries), len(potential_2_track_rivalries)))
+            rivalries.extend(potential_2_track_rivalries[:needed])
         
         return sorted(rivalries, key=lambda x: x['shared_tracks'], reverse=True)
     
@@ -345,13 +388,13 @@ class WeeklyStatsGenerator:
         write_line("🏁 TRACKMANIA TEAM WEEKLY HIGHLIGHTS")
         write_line("=" * 60)
         
-        # Get most recent Thursday to current day date range
+        # Get most recent Sunday to current day date range
         start_date, end_date = get_weekly_date_range()
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         
         # Print the date range being used
-        print(f"📅 Using most recent Thursday to current day range: {start_date} to {end_date}")
+        print(f"📅 Using most recent Sunday to current day range: {start_date} to {end_date}")
         
         write_line(f"📅 Week of {start_dt.strftime('%B %d')} - {end_dt.strftime('%B %d, %Y')}")
         write_line(f"👥 Team: {len(PLAYER_LOGINS)} Active Players")
@@ -713,7 +756,7 @@ class WeeklyStatsGenerator:
                 else:
                     record_datetime = datetime.strptime(date, '%Y-%m-%d')
                 
-                # Only count records within the weekly date range (Thursday to current day)
+                # Only count records within the weekly date range (Sunday to current day)
                 start_date_str, end_date_str = get_weekly_date_range()
                 start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
                 end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
@@ -2606,7 +2649,31 @@ class WeeklyStatsGenerator:
 
 def main():
     """Main execution"""
-    parser = argparse.ArgumentParser(description='Generate weekly TrackMania team statistics')
+    global CUSTOM_START_DATE, CUSTOM_END_DATE
+    
+    parser = argparse.ArgumentParser(
+        description='Generate weekly TrackMania team statistics',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Date Range Examples:
+  python weekly_team_stats.py                                    # Current week (Sunday to today)
+  python weekly_team_stats.py --start 2025-08-03 --end 2025-08-16  # Custom date range
+  python weekly_team_stats.py --weeks-back 1                     # Last complete week
+  python weekly_team_stats.py --weeks-back 2 --discord           # 2 weeks ago, Discord format
+        """
+    )
+    
+    # Date range arguments
+    date_group = parser.add_mutually_exclusive_group()
+    date_group.add_argument('--start', '--start-date', 
+                           help='Start date (YYYY-MM-DD format)')
+    date_group.add_argument('--weeks-back', type=int,
+                           help='Generate for N weeks back (1=last week, 2=week before last, etc.)')
+    
+    parser.add_argument('--end', '--end-date',
+                       help='End date (YYYY-MM-DD format, required if --start is used)')
+    
+    # Existing arguments
     parser.add_argument('-o', '--output', type=str, default='weekly_stats.txt', help='Output file path (default: weekly_stats.txt)')
     parser.add_argument('--db', type=str, default='../../dedimania_history_master.db', help='Database file path')
     parser.add_argument('--discord', action='store_true', help='Generate Discord-friendly summary instead of full report')
@@ -2618,6 +2685,21 @@ def main():
     parser.add_argument('--all', action='store_true', help='Generate all versions (full report, Discord summary, images, heatmap, and dashboard)')
     
     args = parser.parse_args()
+    
+    # Validate date arguments
+    if args.start and not args.end:
+        parser.error("--end is required when --start is specified")
+    if args.end and not args.start:
+        parser.error("--start is required when --end is specified")
+    
+    # Set custom dates if provided
+    if args.start and args.end:
+        CUSTOM_START_DATE = args.start
+        CUSTOM_END_DATE = args.end
+        print(f"📅 Using custom date range: {args.start} to {args.end}")
+    elif args.weeks_back:
+        CUSTOM_START_DATE, CUSTOM_END_DATE = calculate_weeks_back_dates(args.weeks_back)
+        print(f"📅 Using {args.weeks_back} week(s) back: {CUSTOM_START_DATE} to {CUSTOM_END_DATE}")
     
     generator = WeeklyStatsGenerator(db_path=args.db)
     

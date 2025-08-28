@@ -8,7 +8,7 @@ import re
 import html
 
 player_logins = [
-    'yrdk', 'niyck', 'youngblizzard', 'pointiff', 'yogeshdeshwari', 'bananaapple',
+    '2nd', 'yrdk', 'niyck', 'youngblizzard', 'pointiff', 'yogeshdeshwari', 'bananaapple',
     'xxgammelhdxx', 'tzigitzellas', 'fichekk', 'mglulguf', 'knotisaac', 'hoodintm',
     'heisenberg01', 'paxinho', 'thewelkuuus', 'riza_123', 'dejong2', 'brunobranco32',
     'cholub', 'certifiednebula', 'luka1234car', 'sylwson2', 'erreerrooo', 'declineee', 'bojo_interia.eu','noam3105','stwko','mitrug','bobjegraditelj'
